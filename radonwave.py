@@ -5,7 +5,7 @@ from struct import unpack
 from bluepy import btle
 import time
 from argparse import ArgumentParser
-
+import json, os, paho.mqtt.client as paho
 
 class CouldNotConnectError(Exception):
 	pass
@@ -72,6 +72,28 @@ def connect_and_read(device_address):
 		radon_avg=radon_avg, radon_1day=radon_1day, accel=accel,
 		humidity2=humidity2)
 
+def mqtt_connect():
+	mqtt_host=os.environ['mqtt_host']
+	mqtt_port=int(os.environ['mqtt_port'])
+	mqtt_username=os.environ['mqtt_username']
+	mqtt_password=os.environ['mqtt_password']
+	mqtt_client=os.environ['mqtt_client']
+
+	mqtt_client = paho.Client(mqtt_client)                           #create client object
+	mqtt_client.username_pw_set(mqtt_username, password=mqtt_password)
+	mqtt_client.on_publish = mqtt_onpublish                          #assign function to callback
+	mqtt_client.connect(mqtt_host,port=mqtt_port)                                 #establish connection
+
+	return mqtt_client
+
+def mqtt_onpublish(client,userdata,result):             #create function for callback
+	print("data published \n")
+	# print("client: %s \n") % (client)
+	# print("userdata: %s \n") % (userdata)
+	# print("result: %s \n") % (result)
+	pass
+
+
 
 def main():
 	parser = ArgumentParser()
@@ -82,6 +104,8 @@ def main():
 	parser.add_argument('device_address', metavar='BLUETOOTH-DEVICE-ADDRESS')
 	args = parser.parse_args()
 	device_address = args.device_address
+	mqtt_client = mqtt_connect()
+	mqtt_topic = os.environ['mqtt_topic']
 
 	while True:
 		try:
@@ -96,6 +120,20 @@ def main():
 				**vars(measurement)
 				), sep='\t')
 			sys.stdout.flush()
+
+			data = {}
+			data['time'] = time.strftime('%Y-%m-%d %H:%M:%S')
+			data['temperature'] = "%s" % (measurement.temperature)
+			data['humidity'] = "%s" % (measurement.humidity)
+			data['radon_avg'] = "%s" % (measurement.radon_avg)
+			data['radon_1day'] = "%s" % (measurement.radon_1day)
+			data['accel'] = "%s" % (measurement.accel)
+			data['humidity2'] = "%s" % (measurement.humidity2)
+			json_data = json.dumps(data)
+			print(json_data)
+
+			ret = mqtt_client.publish(mqtt_topic, json_data)
+
 		time.sleep(args.wait)
 
 
